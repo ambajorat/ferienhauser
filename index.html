@@ -39,7 +39,14 @@ header h1{
   letter-spacing:-0.01em; margin:0 0 6px; line-height:1.15;
 }
 .untertitel{margin:0 0 8px; color:var(--gedimmt); font-size:17px}
-.stats{font-size:13.5px; color:var(--gedimmt); margin:0 0 30px}
+.stats{font-size:13.5px; color:var(--gedimmt); margin:0 0 8px}
+.vorschlag-zeile{margin:0 0 30px}
+.vorschlag-knopf{
+  font:600 14px "Public Sans",sans-serif; cursor:pointer;
+  color:var(--akzent); background:transparent;
+  border:1px solid var(--akzent); border-radius:6px; padding:6px 14px;
+}
+.vorschlag-knopf:hover{background:var(--akzent); color:#0d0d0d}
 
 .ansicht-zeile{margin:0 0 12px}
 #karte{
@@ -221,7 +228,8 @@ footer.seite a{color:var(--akzent)}
   <p class="blogzeile"><a class="zurueck" href="https://ploetzlich-querschnitt.de">&larr; Zur&uuml;ck zu Pl&ouml;tzlich Querschnitt</a></p>
   <h1>Barrierefreie Urlaubsunterkünfte</h1>
   <p class="untertitel">Ferienhäuser, Ferienwohnungen und Hotels – von meinem KI-Agenten wöchentlich gesucht und auf Rollstuhltauglichkeit geprüft: stufenlos, breite Türen, befahrbare Dusche, mit dem Auto erreichbar.</p>
-  <p class="stats">561 Inserate geprüft &nbsp;·&nbsp; 196 geeignet &nbsp;·&nbsp; Stand 26.07.2026 08:05</p>
+  <p class="vorschlag-zeile"><button class="vorschlag-knopf" id="vorschlagOeffnen">+ Unterkunft vorschlagen</button></p>
+  <p class="stats">561 Inserate geprüft &nbsp;·&nbsp; 196 geeignet &nbsp;·&nbsp; Stand 26.07.2026 13:00</p>
 </header>
 
 <div class="wohnort-zeile">
@@ -287,6 +295,25 @@ footer.seite a{color:var(--akzent)}
 <p class="karten-hinweis" id="kartenHinweis" style="display:none"></p>
 <div class="liste" id="liste"></div>
 <div class="leer" id="leer" hidden>Keine Treffer mit diesen Filtern.<br>Score-Hürde senken oder Suche leeren.</div>
+
+<div class="modal-hg" id="vorschlagModal" role="dialog" aria-modal="true">
+  <div class="modal">
+    <h3>Unterkunft vorschlagen</h3>
+    <p class="m-obj">Kennst du eine rollstuhlgerechte Unterkunft, die hier noch fehlt? Trag sie ein – ich prüfe sie und schalte sie frei.</p>
+    <label for="vUrl">URL der Unterkunft *</label>
+    <input type="url" id="vUrl" placeholder="https://..." required>
+    <label for="vKommentar">Warum ist die Unterkunft empfehlenswert? *</label>
+    <textarea id="vKommentar" maxlength="600" placeholder="Was macht sie rollstuhlgerecht? Eigene Erfahrung? Besonderheiten?" required></textarea>
+    <label for="vName">Dein Name oder Kürzel (freiwillig)</label>
+    <input type="text" id="vName" maxlength="60" placeholder="z.B. Marie K.">
+    <p class="m-hinweis">Dein Vorschlag wird durch den wöchentlichen KI-Agenten geprüft (Region, Fahrzeit, Rollstuhltauglichkeit) und dann von André M. Bajorat freigeschaltet.</p>
+    <div class="m-status" id="vStatus"></div>
+    <div class="modal-aktion">
+      <button class="m-abbrechen" id="vAbbrechen">Abbrechen</button>
+      <button class="m-senden" id="vSenden">Vorschlagen</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal-hg" id="bewertModal" role="dialog" aria-modal="true">
   <div class="modal">
@@ -729,6 +756,76 @@ document.getElementById('mSenden').addEventListener('click', async () => {
     status.textContent = 'Konnte gerade nicht gesendet werden. Bitte später nochmal.';
     status.style.color = 'var(--akzent)';
   }
+});
+
+// URL-Index für Dubletten-Check laden (aus url_index.json neben index.html)
+let bekannteUrls = new Set();
+fetch('url_index.json').then(r => r.json()).then(j => {
+  bekannteUrls = new Set(j.urls.map(u => u.split('#')[0].split('?')[0].replace(/\/$/, '')));
+}).catch(() => {});
+
+function normalisiereUrl(u){
+  return u.trim().split('#')[0].split('?')[0].replace(/\/$/, '');
+}
+
+const vModal = document.getElementById('vorschlagModal');
+document.getElementById('vorschlagOeffnen').addEventListener('click', () => {
+  document.getElementById('vUrl').value = '';
+  document.getElementById('vKommentar').value = '';
+  document.getElementById('vName').value = '';
+  document.getElementById('vStatus').textContent = '';
+  vModal.classList.add('offen');
+});
+document.getElementById('vAbbrechen').addEventListener('click', () => vModal.classList.remove('offen'));
+vModal.addEventListener('click', e => { if (e.target === vModal) vModal.classList.remove('offen'); });
+
+document.getElementById('vSenden').addEventListener('click', async () => {
+  const status = document.getElementById('vStatus');
+  const url = document.getElementById('vUrl').value.trim();
+  const kommentar = document.getElementById('vKommentar').value.trim();
+  const name = document.getElementById('vName').value.trim();
+  if (!url || !kommentar){
+    status.textContent = 'Bitte URL und Beschreibung ausfüllen.';
+    status.style.color = 'var(--akzent)';
+    return;
+  }
+  try {
+    new URL(url);
+  } catch(e) {
+    status.textContent = 'Bitte eine gültige URL angeben (mit https://).';
+    status.style.color = 'var(--akzent)';
+    return;
+  }
+  // Dubletten-Check gegen den URL-Index
+  if (bekannteUrls.has(normalisiereUrl(url))){
+    status.innerHTML = 'Diese Unterkunft ist bereits in der Liste. <a href="' +
+      url + '" target="_blank" style="color:var(--akzent)">Direkt öffnen</a>';
+    status.style.color = 'var(--gedimmt)';
+    return;
+  }
+  const knopf = document.getElementById('vSenden');
+  knopf.disabled = true;
+  knopf.textContent = 'Sende …';
+  try {
+    const r = await fetch(SUPABASE_URL + '/rest/v1/vorschlaege',
+      { method:'POST',
+        headers: { apikey: SUPABASE_KEY, Authorization:'Bearer '+SUPABASE_KEY,
+                   'Content-Type':'application/json', Prefer:'return=minimal' },
+        body: JSON.stringify({ url, kommentar, name: name || null }) });
+    if (r.ok){
+      status.textContent = 'Danke! Dein Vorschlag wird beim nächsten Lauf geprüft und dann freigeschaltet.';
+      status.style.color = 'var(--gruen)';
+      setTimeout(() => vModal.classList.remove('offen'), 3000);
+    } else {
+      status.textContent = 'Konnte gerade nicht gesendet werden. Bitte später nochmal.';
+      status.style.color = 'var(--akzent)';
+    }
+  } catch(e){
+    status.textContent = 'Netzwerkfehler. Bitte später nochmal.';
+    status.style.color = 'var(--akzent)';
+  }
+  knopf.disabled = false;
+  knopf.textContent = 'Vorschlagen';
 });
 
 // Bewertungen einmal am Anfang laden, dann Ansicht neuzeichnen
